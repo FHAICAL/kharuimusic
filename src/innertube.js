@@ -189,13 +189,86 @@ export function extractPlaylists(json) {
   return out;
 }
 
-export async function searchSongs(query) {
+// Search filters, ArchiveTune-style tabs (songs / videos / albums / artists / playlists).
+export const SEARCH_FILTERS = {
+  songs: 'EgWKAQIIAWoKEAoQBBAFEAkQBQ%3D%3D',
+  videos: 'EgWKAQIQAWoKEAoQBBAFEAkQBQ%3D%3D',
+  albums: 'EgWKAQIYAWoKEAoQBBAFEAkQBQ%3D%3D',
+  artists: 'EgWKAQIgAWoKEAoQBBAFEAkQBQ%3D%3D',
+  playlists: 'EgWKAQIoAWoKEAoQBBAFEAkQBQ%3D%3D',
+};
+
+// Albums/artists/playlists as browse rows (any browseId: MPRE…, UC…, VL…, OLAK…).
+export function extractBrowseItems(json) {
+  const out = [];
+  const seen = new Set();
+  (function walk(node) {
+    if (!node || typeof node !== 'object') return;
+    const r = node.musicResponsiveListItemRenderer;
+    if (r) {
+      const col = i => r.flexColumns?.[i]?.musicResponsiveListItemFlexColumnRenderer?.text?.runs || [];
+      const bid = r.navigationEndpoint?.browseEndpoint?.browseId
+        || col(0)[0]?.navigationEndpoint?.browseEndpoint?.browseId
+        || r.playlistItemData?.playlistId;
+      const title = col(0).map(x => x.text).join('');
+      const videoId = r.playlistItemData?.videoId;
+      if (bid && title && !videoId && !seen.has(bid)) {
+        seen.add(bid);
+        const thumbs = r.thumbnail?.musicThumbnailRenderer?.thumbnail?.thumbnails || [];
+        out.push({ browseId: bid, title, byline: col(1).map(x => x.text).join(''), thumb: thumbs[thumbs.length - 1]?.url || '' });
+      }
+    }
+    for (const v of Object.values(node)) walk(v);
+  })(json);
+  return out;
+}
+
+export function extractContinuation(json) {
+  let token = null;
+  (function walk(node) {
+    if (!node || typeof node !== 'object' || token) return;
+    if (typeof node.continuation === 'string' && node.continuation.length > 20) { token = node.continuation; return; }
+    const c = node.nextContinuationData?.continuation || node.continuationItemRenderer?.continuationEndpoint?.continuationCommand?.token;
+    if (c) { token = c; return; }
+    for (const v of Object.values(node)) walk(v);
+  })(json);
+  return token;
+}
+
+export async function search(query, filter = 'songs') {
   const client = CLIENTS.WEB_REMIX;
   const json = await ytPost('search', client, {
     context: { client: { ...client.ctx, visitorData: session?.visitorData } },
-    query, params: 'EgWKAQIIAWoKEAoQBBAFEAkQBQ%3D%3D', // songs filter
+    query, params: SEARCH_FILTERS[filter] || SEARCH_FILTERS.songs,
   }, { login: true });
-  return { songs: extractSongs(json), visitorData: json?.responseContext?.visitorData, raw: json };
+  return {
+    songs: extractSongs(json),
+    items: extractBrowseItems(json),
+    playlists: extractPlaylists(json),
+    continuation: extractContinuation(json),
+    visitorData: json?.responseContext?.visitorData, raw: json,
+  };
+}
+
+export async function searchSongs(query) {
+  const r = await search(query, 'songs');
+  return { songs: r.songs, visitorData: r.visitorData, raw: r.raw };
+}
+
+// Fetch the next page for a search or a browse (playlist/album/artist page).
+export async function continueEndpoint(endpoint, token) {
+  const client = CLIENTS.WEB_REMIX;
+  const json = await ytPost(endpoint, client, {
+    context: { client: { ...client.ctx, visitorData: session?.visitorData } },
+    continuation: token,
+  }, { login: true });
+  return {
+    songs: extractSongs(json),
+    items: extractBrowseItems(json),
+    playlists: extractPlaylists(json),
+    continuation: extractContinuation(json),
+    raw: json,
+  };
 }
 
 // Generic two-row cards (albums / playlists / artists) from home & shelves.
@@ -234,7 +307,7 @@ export async function browse(browseId) {
 
 export async function browseSongs(browseId) {
   const json = await browse(browseId);
-  return { songs: extractSongs(json), raw: json };
+  return { songs: extractSongs(json), items: extractBrowseItems(json), continuation: extractContinuation(json), raw: json };
 }
 
 // Library landing: returns whatever playlists YouTube exposes for the
