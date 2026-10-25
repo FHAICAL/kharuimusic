@@ -1,0 +1,1 @@
+{"android":{"allowMixedContent":true},"appId":"app.kharui.music","appName":"KharuiMusic","plugins":{"CapacitorHttp":{"enabled":true}},"webDir":"dist"}
