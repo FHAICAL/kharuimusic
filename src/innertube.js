@@ -198,6 +198,32 @@ export async function searchSongs(query) {
   return { songs: extractSongs(json), visitorData: json?.responseContext?.visitorData, raw: json };
 }
 
+// Generic two-row cards (albums / playlists / artists) from home & shelves.
+export function extractCards(json) {
+  const out = [];
+  const seen = new Set();
+  (function walk(node) {
+    if (!node || typeof node !== 'object') return;
+    const t = node.musicTwoRowItemRenderer;
+    if (t) {
+      const bid = t.navigationEndpoint?.browseEndpoint?.browseId;
+      const title = t.title?.runs?.map(x => x.text).join('') || '';
+      const thumbs = t.thumbnailRenderer?.musicThumbnailRenderer?.thumbnail?.thumbnails || [];
+      if (bid && title && !seen.has(bid)) {
+        seen.add(bid);
+        out.push({ browseId: bid, title, byline: t.subtitle?.runs?.map(x => x.text).join('') || '', thumb: thumbs[thumbs.length - 1]?.url || '' });
+      }
+    }
+    for (const v of Object.values(node)) walk(v);
+  })(json);
+  return out;
+}
+
+export async function homeFeed() {
+  const json = await browse('FEmusic_home');
+  return { songs: extractSongs(json), cards: extractCards(json), visitorData: json?.responseContext?.visitorData, raw: json };
+}
+
 export async function browse(browseId) {
   const client = CLIENTS.WEB_REMIX;
   return ytPost('browse', client, {
