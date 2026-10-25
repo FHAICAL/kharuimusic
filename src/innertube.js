@@ -68,7 +68,7 @@ export function hasCompleteLoginCookies(cookie) {
   return !!map['LOGIN_INFO'] && !!loginCookieValue(cookie);
 }
 
-async function ytHeaders(client, { login = false } = {}) {
+async function ytHeaders(client, { login = false, pageId = true } = {}) {
   const h = {
     'Content-Type': 'application/json',
     'X-YouTube-Client-Name': client.id,
@@ -86,8 +86,11 @@ async function ytHeaders(client, { login = false } = {}) {
       h['Cookie'] = session.cookie;
       h['Authorization'] = `SAPISIDHASH ${ts}_${await sha1Hex(`${ts} ${v} ${client.origin}`)}`;
       h['X-Goog-AuthUser'] = '0';
-      const pageId = session.dataSyncId?.split('||')[0];
-      if (pageId) h['X-Goog-PageId'] = pageId;
+      // X-Goog-PageId must be the numeric account id that prefixes a real
+      // DATASYNC_ID ("<id>||..."). A scraped value in any other shape is
+      // worse than no header at all (backend 500 / treated as logged out).
+      const pageIdVal = session.dataSyncId?.split('||')[0];
+      if (pageId && pageIdVal && /^\d+$/.test(pageIdVal)) h['X-Goog-PageId'] = pageIdVal;
     }
   }
   return h;
@@ -179,19 +182,28 @@ export async function fetchYtcfgFromHtml() {
 
 export async function accountMenu() {
   const client = CLIENTS.WEB_REMIX;
-  const json = await ytPost('account/account_menu', client, {
-    context: { client: { ...client.ctx, visitorData: session?.visitorData, dataSyncId: undefined } },
-  }, { login: true });
-  let name = null, email = null, handle = null;
-  (function walk(node) {
-    if (!node || typeof node !== 'object') return;
-    const hdr = node.activeAccountHeaderRenderer;
-    if (hdr) {
-      name = hdr.accountName?.runs?.map(r => r.text).join('') || name;
-      email = hdr.email?.simpleText || hdr.accountHandle?.runs?.map(r => r.text).join('') || email;
-      handle = hdr.channelHandle?.simpleText || handle;
-    }
-    for (const v of Object.values(node)) walk(v);
-  })(json);
-  return { name, email, handle, raw: json };
+  const parse = json => {
+    let name = null, email = null, handle = null, loggedIn = null;
+    (function walk(node) {
+      if (!node || typeof node !== 'object') return;
+      const hdr = node.activeAccountHeaderRenderer;
+      if (hdr) {
+        name = hdr.accountName?.runs?.map(r => r.text).join('') || name;
+        email = hdr.email?.simpleText || hdr.accountHandle?.runs?.map(r => r.text).join('') || email;
+        handle = hdr.channelHandle?.simpleText || handle;
+      }
+      if (Array.isArray(node.params)) {
+        for (const p of node.params) if (p.key === 'logged_in' || p.key === 'yt_li') loggedIn = p.value;
+      }
+      for (const v of Object.values(node)) walk(v);
+    })(json);
+    return { name, email, handle, loggedIn, raw: json };
+  };
+  const body = { context: { client: { ...client.ctx, visitorData: session?.visitorData } } };
+  const first = parse(await ytPost('account/account_menu', client, body, { login: true }));
+  if (first.name) return { ...first, variant: 'standar' };
+  // Retry without X-Goog-PageId: a bad page-id header can make the backend
+  // treat an otherwise valid session as logged out.
+  const second = parse(await ytPost('account/account_menu', client, body, { login: true, pageId: false }));
+  return { ...second, variant: 'tanpa-pageid', firstLoggedIn: first.loggedIn };
 }
