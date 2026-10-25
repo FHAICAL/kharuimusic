@@ -88,7 +88,15 @@
     </div>
     <div id="resultsWrap" hidden>
       <div class="sec-head"><h2 id="resultsTitle">Hasil</h2><button id="btnBackHome" class="ghost">✕ Tutup</button></div>
+      <div class="chips-row" id="filterChips">
+        <button class="fchip on" data-filter="songs">Lagu</button>
+        <button class="fchip" data-filter="videos">Video</button>
+        <button class="fchip" data-filter="albums">Album</button>
+        <button class="fchip" data-filter="artists">Artis</button>
+        <button class="fchip" data-filter="playlists">Playlist</button>
+      </div>
       <div id="results" class="song-list"></div>
+      <button id="btnMoreResults" class="ghost full" hidden>Muat lebih banyak</button>
     </div>
   </section>
 
@@ -97,6 +105,10 @@
     <div class="sec-head"><h2>Library kamu</h2></div>
     <p class="hint" id="libraryHint">Memuat…</p>
     <div id="libraryList"></div>
+    <div id="historyWrap" hidden>
+      <div class="sec-head"><h2>Riwayat putar</h2></div>
+      <div id="historyList" class="song-list"></div>
+    </div>
   </section>
 
   <!-- PLAYLIST -->
@@ -112,6 +124,7 @@
       <button id="btnShufflePlay" class="ghost">🔀 Acak</button>
     </div>
     <div id="plSongs" class="song-list"></div>
+    <button id="btnMorePlaylist" class="ghost full" hidden>Muat lebih banyak</button>
   </section>
 </main>
 
@@ -162,9 +175,19 @@
       </button>
     </div>
     <div id="npStatus" class="np-status"></div>
+    <div class="np-tabs">
+      <button class="np-tab on" data-tab="queue">Berikutnya</button>
+      <button class="np-tab" data-tab="lyrics">Lirik</button>
+      <button class="np-tab" data-tab="related">Terkait</button>
+    </div>
     <div id="queueWrap">
-      <h3>Berikutnya dalam antrean</h3>
       <div id="queueList" class="song-list"></div>
+    </div>
+    <div id="lyricsWrap" hidden>
+      <div id="lyricsBody" class="lyrics-body">—</div>
+    </div>
+    <div id="relatedWrap" hidden>
+      <div id="relatedList" class="song-list"></div>
     </div>
   </div>
 </div>
@@ -180,6 +203,23 @@
     </div>
   </div>
   <div id="log"></div>
+</div>
+
+<!-- SONG MENU -->
+<div id="menuBackdrop" hidden></div>
+<div id="songMenu" hidden>
+  <div class="menu-head">
+    <img id="menuThumb" alt="" />
+    <div><div id="menuTitle" class="menu-title">—</div><div id="menuSub" class="menu-artist">—</div></div>
+  </div>
+  <div class="col-gap">
+    <button id="menuPlayNext" class="ghost full">⏭ Putar Berikutnya</button>
+    <button id="menuAddQueue" class="ghost full">☰ Tambah ke Antrean</button>
+    <button id="menuRadio" class="ghost full">📻 Mulai Radio dari Lagu Ini</button>
+    <button id="menuLyrics" class="ghost full">🎤 Lihat Lirik</button>
+    <button id="menuArtist" class="ghost full">👤 Cari Artis Ini</button>
+    <button id="menuClose" class="ghost full">Tutup</button>
+  </div>
 </div>
 
 <!-- ACCOUNT SHEET -->
