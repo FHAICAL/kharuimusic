@@ -133,6 +133,23 @@ main{padding:2px 16px 16px;max-width:760px;margin:0 auto}
 .log-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:8px;flex-wrap:wrap}
 .log-btns{display:flex;gap:6px;flex-wrap:wrap}
 #log{flex:1;background:#08080a;border:1px solid var(--line);border-radius:10px;padding:10px;font-size:11px;line-height:1.55;overflow:auto;white-space:pre-wrap;word-break:break-word;font-family:monospace;color:#d6d6d6}
+/* filter chips, load-more, song menu, NP tabs, lyrics */
+.fchip{background:rgba(255,255,255,.1);border:0;color:var(--txt);border-radius:8px;padding:7px 13px;font-size:13px;white-space:nowrap}
+.fchip.on{background:#fff;color:#0f0f0f;font-weight:600}
+#filterChips{margin:2px 0 8px;flex-wrap:nowrap;overflow-x:auto}
+button.ghost.full{width:100%;margin-top:12px;text-align:center}
+.song .menu-btn{flex:none;background:transparent;border:0;color:var(--dim);font-size:19px;padding:10px 6px;line-height:1}
+#menuBackdrop{position:fixed;inset:0;z-index:55;background:rgba(0,0,0,.55)}
+#songMenu{position:fixed;left:0;right:0;bottom:0;z-index:60;background:#212121;border-top:1px solid var(--line);border-radius:18px 18px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom))}
+#songMenu .ghost.full{text-align:left;margin-top:0}
+.menu-head{display:flex;gap:12px;align-items:center;margin-bottom:8px}
+.menu-head img{width:52px;height:52px;border-radius:6px;object-fit:cover;background:var(--card2)}
+.menu-title{font-size:15px;font-weight:600}
+.menu-artist{font-size:13px;color:var(--dim);margin-top:2px}
+.np-tabs{display:flex;gap:6px;margin-top:16px;border-bottom:1px solid rgba(255,255,255,.14)}
+.np-tab{flex:1;background:transparent;border:0;color:#bbb;font-size:14px;font-weight:600;padding:10px 0;border-bottom:2px solid transparent}
+.np-tab.on{color:#fff;border-bottom-color:#fff}
+.lyrics-body{white-space:pre-wrap;font-size:15px;line-height:1.75;color:#eee;padding:14px 0;word-break:break-word}
 #backdrop{position:fixed;inset:0;z-index:55;background:rgba(0,0,0,.55)}
 #accountSheet{position:fixed;left:0;right:0;bottom:0;z-index:60;background:#212121;border-top:1px solid var(--line);border-radius:18px 18px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom))}
 #accountSheet h3{margin:0 0 6px;font-size:17px}
