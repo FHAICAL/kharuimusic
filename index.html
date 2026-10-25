@@ -7,63 +7,111 @@
 </head>
 <body>
 <header id="topbar">
-  <div class="logo">🎵 Kharui<span>Music</span></div>
+  <div class="logo">
+    <span class="logo-mark"><svg viewBox="0 0 24 24" width="18" height="18" fill="#fff"><path d="M8 5.5v13l11-6.5z"/></svg></span>
+    Kharui<span class="logo-accent">Music</span>
+  </div>
   <div class="top-actions">
-    <button id="btnLog" class="icon-btn" title="Log diagnostik">🧾</button>
+    <button id="btnTopSearch" class="icon-btn" title="Cari" aria-label="Cari">
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27a6.5 6.5 0 1 0-.7.7l.27.28v.79l5 4.99L20.49 19zm-6 0A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14"/></svg>
+    </button>
     <button id="btnAccount" class="account-btn">Masuk</button>
   </div>
 </header>
 
 <main>
-  <!-- JELAJAH -->
-  <section id="view-explore" class="view">
+  <!-- BERANDA -->
+  <section id="view-home" class="view">
+    <div class="chips-row scroll-x" id="moodChips">
+      <button class="qchip" data-q="lagu santai akustik">Santai</button>
+      <button class="qchip" data-q="musik fokus belajar lofi">Fokus</button>
+      <button class="qchip" data-q="lagu workout semangat">Olahraga</button>
+      <button class="qchip" data-q="lagu pesta party hits">Pesta</button>
+      <button class="qchip" data-q="lagu galau sedih indonesia">Galau</button>
+      <button class="qchip" data-q="lagu romantis cinta">Romantis</button>
+      <button class="qchip" data-q="musik tidur tenang">Tidur</button>
+      <button class="qchip" data-q="lagu nostalgia 90an indonesia">Nostalgia</button>
+    </div>
+
+    <div id="recentWrap" hidden>
+      <div class="sec-head"><h2>Baru saja diputar</h2></div>
+      <div id="recentList" class="song-list"></div>
+    </div>
+
+    <div class="sec-head"><h2>Pilihan cepat</h2></div>
+    <div id="quickPicks" class="quick-grid"><p class="hint pad">Memuat rekomendasi…</p></div>
+
+    <div class="sec-head"><h2>Rekomendasi untukmu</h2></div>
+    <div id="homeCards" class="cards-row scroll-x"><p class="hint pad">Memuat…</p></div>
+
+    <div id="homeAlbumsWrap" hidden>
+      <div class="sec-head"><h2>Album &amp; playlist</h2></div>
+      <div id="homeAlbums" class="cards-row scroll-x"></div>
+    </div>
+
+    <div class="sec-head"><h2>Sedang tren</h2></div>
+    <div id="homeTrending" class="song-list"><p class="hint pad">Memuat…</p></div>
+  </section>
+
+  <!-- JELAJAHI / CARI -->
+  <section id="view-explore" class="view" hidden>
     <form id="searchForm" class="search-row">
+      <span class="search-ico"><svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27a6.5 6.5 0 1 0-.7.7l.27.28v.79l5 4.99L20.49 19zm-6 0A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14"/></svg></span>
       <input id="q" type="search" placeholder="Cari lagu, artis, album…" autocomplete="off" />
-      <button type="submit">Cari</button>
+      <button type="submit" class="search-go">Cari</button>
     </form>
-    <div id="homeSections">
-      <h2 class="sec-title">Mulai cepat</h2>
+    <div id="searchDefault">
+      <div class="sec-head"><h2>Jelajahi kategori</h2></div>
+      <div class="cat-grid">
+        <button class="cat-tile" style="--c:#e13300" data-q="lagu pop indonesia terbaru">Pop</button>
+        <button class="cat-tile" style="--c:#7358ff" data-q="lagu rock terbaik">Rock</button>
+        <button class="cat-tile" style="--c:#1e3264" data-q="dangdut koplo terbaru">Dangdut</button>
+        <button class="cat-tile" style="--c:#e8115b" data-q="kpop hits">K-Pop</button>
+        <button class="cat-tile" style="--c:#477d95" data-q="lagu indie indonesia">Indie</button>
+        <button class="cat-tile" style="--c:#bc5900" data-q="hip hop hits">Hip-Hop</button>
+        <button class="cat-tile" style="--c:#777" data-q="musik jazz santai">Jazz</button>
+        <button class="cat-tile" style="--c:#503750" data-q="lagu akustik cover">Akustik</button>
+        <button class="cat-tile" style="--c:#0d73ec" data-q="musik elektronik edm">Elektronik</button>
+        <button class="cat-tile" style="--c:#ba5d07" data-q="lagu barat 2000an nostalgia">2000-an</button>
+      </div>
+      <div class="sec-head"><h2>Artis populer</h2></div>
       <div class="chips-row">
         <button class="qchip" data-q="Dewa 19">Dewa 19</button>
-        <button class="qchip" data-q="Peterpan">Peterpan</button>
+        <button class="qchip" data-q="Peterpan NOAH">NOAH</button>
         <button class="qchip" data-q="Sheila On 7">Sheila On 7</button>
+        <button class="qchip" data-q="Hindia Baskara">Hindia</button>
+        <button class="qchip" data-q="Tulus">Tulus</button>
         <button class="qchip" data-q="Coldplay">Coldplay</button>
-        <button class="qchip" data-q="Lo-fi beats">Lo-fi</button>
+        <button class="qchip" data-q="Bruno Mars">Bruno Mars</button>
+        <button class="qchip" data-q="Taylor Swift">Taylor Swift</button>
       </div>
-      <div id="recentWrap" hidden>
-        <h2 class="sec-title">Terakhir diputar</h2>
-        <div id="recentList"></div>
-      </div>
-      <p class="hint">Cari lagu di atas, lalu ketuk untuk memutar. Hasil pencarian otomatis menjadi antrean.</p>
     </div>
     <div id="resultsWrap" hidden>
-      <h2 class="sec-title" id="resultsTitle">Hasil</h2>
-      <div id="results"></div>
-      <button id="btnBackHome" class="ghost full">← Kembali</button>
+      <div class="sec-head"><h2 id="resultsTitle">Hasil</h2><button id="btnBackHome" class="ghost">✕ Tutup</button></div>
+      <div id="results" class="song-list"></div>
     </div>
   </section>
 
   <!-- LIBRARY -->
   <section id="view-library" class="view" hidden>
-    <h2 class="sec-title">Library kamu</h2>
-    <div id="libraryBody">
-      <p class="hint" id="libraryHint">Memuat…</p>
-      <div id="libraryList"></div>
-    </div>
+    <div class="sec-head"><h2>Library kamu</h2></div>
+    <p class="hint" id="libraryHint">Memuat…</p>
+    <div id="libraryList"></div>
   </section>
 
   <!-- PLAYLIST -->
   <section id="view-playlist" class="view" hidden>
-    <button id="btnBackLibrary" class="ghost">← Library</button>
+    <button id="btnBackLibrary" class="ghost">← Kembali</button>
     <div class="pl-head">
       <img id="plThumb" alt="" />
-      <div>
-        <div id="plTitle" class="pl-title"></div>
-        <div id="plSub" class="pl-sub"></div>
-      </div>
+      <div id="plTitle" class="pl-title"></div>
+      <div id="plSub" class="pl-sub"></div>
     </div>
-    <button id="btnPlayAll" class="full">▶ Putar Semua</button>
-    <div id="plSongs"></div>
+    <div class="pl-actions">
+      <button id="btnPlayAll" class="playall">▶ Putar Semua</button>
+      <button id="btnShufflePlay" class="ghost">🔀 Acak</button>
+    </div>
+    <div id="plSongs" class="song-list"></div>
   </section>
 </main>
 
@@ -74,35 +122,50 @@
     <div id="miniTitle" class="mini-title">—</div>
     <div id="miniArtist" class="mini-artist">—</div>
   </div>
-  <button id="btnMiniPrev" class="icon-btn">⏮</button>
-  <button id="btnMiniPlay" class="icon-btn big">▶</button>
-  <button id="btnMiniNext" class="icon-btn">⏭</button>
+  <button id="btnMiniPlay" class="icon-btn big" aria-label="Putar/Jeda"></button>
+  <button id="btnMiniNext" class="icon-btn" aria-label="Berikutnya">
+    <svg viewBox="0 0 24 24" width="26" height="26" fill="currentColor"><path d="M6 6l8.5 6L6 18V6zm9.5 0H18v12h-2.5z"/></svg>
+  </button>
   <div id="miniProgress"><div id="miniProgressBar"></div></div>
 </div>
 
 <!-- NOW PLAYING -->
 <div id="nowPlayingSheet" hidden>
-  <div class="np-top">
-    <button id="btnCloseNp" class="icon-btn">⌄</button>
-    <div class="np-source" id="npSource">KharuiMusic</div>
-    <button id="btnQueueToggle" class="icon-btn" title="Antrean">☰</button>
-  </div>
-  <img id="npThumb" alt="" />
-  <div id="npTitle" class="np-title">—</div>
-  <div id="npArtist" class="np-artist">—</div>
-  <input id="npSeek" type="range" min="0" max="1000" value="0" />
-  <div class="np-times"><span id="npCur">0:00</span><span id="npDur">0:00</span></div>
-  <div class="np-controls">
-    <button id="btnShuffle" class="icon-btn toggle">🔀</button>
-    <button id="btnPrev" class="icon-btn big">⏮</button>
-    <button id="btnPlay" class="icon-btn huge">▶</button>
-    <button id="btnNext" class="icon-btn big">⏭</button>
-    <button id="btnRepeat" class="icon-btn toggle">🔁</button>
-  </div>
-  <div id="npStatus" class="np-status"></div>
-  <div id="queueWrap" hidden>
-    <h3>Antrean</h3>
-    <div id="queueList"></div>
+  <div id="npBg"></div>
+  <div class="np-content">
+    <div class="np-top">
+      <button id="btnCloseNp" class="icon-btn" aria-label="Tutup">
+        <svg viewBox="0 0 24 24" width="26" height="26" fill="currentColor"><path d="M7.4 8.6L12 13.2l4.6-4.6L18 10l-6 6-6-6z"/></svg>
+      </button>
+      <div class="np-source" id="npSource">KharuiMusic</div>
+      <span class="np-top-spacer"></span>
+    </div>
+    <img id="npThumb" alt="" />
+    <div id="npTitle" class="np-title">—</div>
+    <div id="npArtist" class="np-artist">—</div>
+    <input id="npSeek" type="range" min="0" max="1000" value="0" />
+    <div class="np-times"><span id="npCur">0:00</span><span id="npDur">0:00</span></div>
+    <div class="np-controls">
+      <button id="btnShuffle" class="icon-btn toggle" aria-label="Acak">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M10.6 9.3 7.6 6H3V4h5.2l3.9 4.3zm6.9-3.4 2-2 2 2v4.6h-2v-2l-1.1 1.1-2.7-2.9 1.8-.8zM3 18v-2h4.6l1.9-2.1 1.5 1.6L8.2 18zm17.5 2-2-2v2H14v-2h4.9l-3.3-3.6 1.5-1.6 3.4 3.7V14h2v4.5l-2 1.5zM13.9 12.4l-1.5-1.6 1.2-1.3 1.5 1.6z" transform="scale(0.92)"/></svg>
+      </button>
+      <button id="btnPrev" class="icon-btn big" aria-label="Sebelumnya">
+        <svg viewBox="0 0 24 24" width="34" height="34" fill="currentColor"><path d="M18 6l-8.5 6L18 18V6zM6 6h2.5v12H6z"/></svg>
+      </button>
+      <button id="btnPlay" class="icon-btn huge" aria-label="Putar/Jeda"></button>
+      <button id="btnNext" class="icon-btn big" aria-label="Berikutnya">
+        <svg viewBox="0 0 24 24" width="34" height="34" fill="currentColor"><path d="M6 6l8.5 6L6 18V6zm9.5 0H18v12h-2.5z"/></svg>
+      </button>
+      <button id="btnRepeat" class="icon-btn toggle" aria-label="Ulangi">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z"/></svg>
+        <span id="repeatOne" hidden>1</span>
+      </button>
+    </div>
+    <div id="npStatus" class="np-status"></div>
+    <div id="queueWrap">
+      <h3>Berikutnya dalam antrean</h3>
+      <div id="queueList" class="song-list"></div>
+    </div>
   </div>
 </div>
 
@@ -110,7 +173,7 @@
 <div id="logDrawer" hidden>
   <div class="log-head">
     <b>Log diagnostik</b>
-    <div>
+    <div class="log-btns">
       <button id="btnCopyLog" class="ghost">📋 Salin</button>
       <button id="btnClearLog" class="ghost">Bersihkan</button>
       <button id="btnCloseLog" class="ghost">Tutup</button>
@@ -120,11 +183,13 @@
 </div>
 
 <!-- ACCOUNT SHEET -->
+<div id="backdrop" hidden></div>
 <div id="accountSheet" hidden>
   <h3>Akun</h3>
   <div id="accountInfo" class="hint">Belum masuk.</div>
   <div class="col-gap">
     <button id="btnLogin" class="full">Masuk dengan Google</button>
+    <button id="btnOpenLog" class="ghost full">🧾 Log diagnostik</button>
     <button id="btnLogout" class="ghost full">Keluar / Hapus Sesi</button>
     <button id="btnCloseAccount" class="ghost full">Tutup</button>
   </div>
@@ -136,8 +201,15 @@
 </div>
 
 <nav id="bottomNav">
-  <button id="navExplore" class="nav-btn active">🏠<span>Jelajah</span></button>
-  <button id="navLibrary" class="nav-btn">📚<span>Library</span></button>
+  <button id="navHome" class="nav-btn active">
+    <svg viewBox="0 0 24 24" width="23" height="23" fill="currentColor"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg><span>Beranda</span>
+  </button>
+  <button id="navExplore" class="nav-btn">
+    <svg viewBox="0 0 24 24" width="23" height="23" fill="currentColor"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm4.2 6.2-2 6.6a1 1 0 0 1-.6.6l-6.6 2a.5.5 0 0 1-.6-.6l2-6.6a1 1 0 0 1 .6-.6l6.6-2a.5.5 0 0 1 .6.6zM12 10.5A1.5 1.5 0 1 0 13.5 12 1.5 1.5 0 0 0 12 10.5z"/></svg><span>Jelajahi</span>
+  </button>
+  <button id="navLibrary" class="nav-btn">
+    <svg viewBox="0 0 24 24" width="23" height="23" fill="currentColor"><path d="M4 6H2v14a2 2 0 0 0 2 2h14v-2H4zm16-4H8a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2zm0 14H8V4h12z"/></svg><span>Library</span>
+  </button>
 </nav>
 
 <audio id="player" preload="auto"></audio>
