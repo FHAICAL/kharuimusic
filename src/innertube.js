@@ -86,11 +86,11 @@ async function ytHeaders(client, { login = false, pageId = true } = {}) {
       h['Cookie'] = session.cookie;
       h['Authorization'] = `SAPISIDHASH ${ts}_${await sha1Hex(`${ts} ${v} ${client.origin}`)}`;
       h['X-Goog-AuthUser'] = '0';
-      // X-Goog-PageId must be the numeric account id that prefixes a real
-      // DATASYNC_ID ("<id>||..."). A scraped value in any other shape is
-      // worse than no header at all (backend 500 / treated as logged out).
-      const pageIdVal = session.dataSyncId?.split('||')[0];
-      if (pageId && pageIdVal && /^\d+$/.test(pageIdVal)) h['X-Goog-PageId'] = pageIdVal;
+      // NOTE: X-Goog-PageId is deliberately NOT sent. Proven on device
+      // (2026-10-26): with the header derived from the scraped dataSyncId,
+      // account_menu answers logged_in=0 / HTTP 500; without it the same
+      // session verifies fine. The `pageId` option is kept for signature
+      // compatibility but ignored.
     }
   }
   return h;
@@ -113,13 +113,8 @@ export async function ytPost(endpoint, client, body, opts = {}) {
   return json;
 }
 
-export async function searchSongs(query) {
-  const client = CLIENTS.WEB_REMIX;
-  const json = await ytPost('search', client, {
-    context: { client: { ...client.ctx, visitorData: session?.visitorData } },
-    query, params: 'EgWKAQIIAWoKEAoQBBAFEAkQBQ%3D%3D', // songs filter
-  }, { login: true });
-  const visitor = json?.responseContext?.visitorData;
+// ---------- generic response extractors ----------
+export function extractSongs(json) {
   const songs = [];
   const seen = new Set();
   (function walk(node) {
@@ -130,13 +125,123 @@ export async function searchSongs(query) {
       if (id && !seen.has(id)) {
         seen.add(id);
         const col = i => r.flexColumns?.[i]?.musicResponsiveListItemFlexColumnRenderer?.text?.runs?.map(x => x.text).join('') || '';
+        const fixed = r.fixedColumns?.[0]?.musicResponsiveListItemFixedColumnRenderer?.text?.runs?.map(x => x.text).join('') || '';
         const thumbs = r.thumbnail?.musicThumbnailRenderer?.thumbnail?.thumbnails || [];
-        songs.push({ videoId: id, title: col(0), byline: col(1), thumb: thumbs[thumbs.length - 1]?.url || '' });
+        songs.push({ videoId: id, title: col(0), byline: col(1), duration: fixed || col(2) || '', thumb: thumbs[thumbs.length - 1]?.url || '' });
       }
+    }
+    const p = node.playlistPanelVideoRenderer;
+    if (p?.videoId && !seen.has(p.videoId)) {
+      seen.add(p.videoId);
+      const thumbs = p.thumbnail?.thumbnails || [];
+      songs.push({
+        videoId: p.videoId,
+        title: p.title?.runs?.map(x => x.text).join('') || '',
+        byline: p.shortBylineText?.runs?.map(x => x.text).join('') || '',
+        duration: p.lengthText?.runs?.map(x => x.text).join('') || '',
+        thumb: thumbs[thumbs.length - 1]?.url || '',
+      });
     }
     for (const v of Object.values(node)) walk(v);
   })(json);
-  return { songs, visitorData: visitor, raw: json };
+  return songs;
+}
+
+export function extractPlaylists(json) {
+  const out = [];
+  const seen = new Set();
+  const readItem = (title, browseId, thumbs, sub) => {
+    if (!browseId || seen.has(browseId) || !title) return;
+    if (!/^(VL|PL|OLAK|UU)/.test(browseId) && browseId !== 'VLLM') return;
+    seen.add(browseId);
+    out.push({ browseId, title, byline: sub || '', thumb: thumbs?.[thumbs.length - 1]?.url || '' });
+  };
+  (function walk(node) {
+    if (!node || typeof node !== 'object') return;
+    const t = node.musicTwoRowItemRenderer;
+    if (t) {
+      readItem(
+        t.title?.runs?.map(x => x.text).join(''),
+        t.navigationEndpoint?.browseEndpoint?.browseId,
+        t.thumbnailRenderer?.musicThumbnailRenderer?.thumbnail?.thumbnails,
+        t.subtitle?.runs?.map(x => x.text).join(''),
+      );
+    }
+    const g = node.gridPlaylistRenderer;
+    if (g) {
+      readItem(
+        g.title?.runs?.map(x => x.text).join(''),
+        g.navigationEndpoint?.browseEndpoint?.browseId || (g.playlistId ? 'VL' + g.playlistId : null),
+        g.thumbnail?.thumbnails,
+        g.videoCountShortText?.runs?.map(x => x.text).join('') || '',
+      );
+    }
+    const r = node.musicResponsiveListItemRenderer;
+    if (r) {
+      const bid = r.navigationEndpoint?.browseEndpoint?.browseId
+        || r.flexColumns?.[0]?.musicResponsiveListItemFlexColumnRenderer?.text?.runs?.[0]?.navigationEndpoint?.browseEndpoint?.browseId;
+      const col = i => r.flexColumns?.[i]?.musicResponsiveListItemFlexColumnRenderer?.text?.runs?.map(x => x.text).join('') || '';
+      const thumbs = r.thumbnail?.musicThumbnailRenderer?.thumbnail?.thumbnails;
+      readItem(col(0), bid, thumbs, col(1));
+    }
+    for (const v of Object.values(node)) walk(v);
+  })(json);
+  return out;
+}
+
+export async function searchSongs(query) {
+  const client = CLIENTS.WEB_REMIX;
+  const json = await ytPost('search', client, {
+    context: { client: { ...client.ctx, visitorData: session?.visitorData } },
+    query, params: 'EgWKAQIIAWoKEAoQBBAFEAkQBQ%3D%3D', // songs filter
+  }, { login: true });
+  return { songs: extractSongs(json), visitorData: json?.responseContext?.visitorData, raw: json };
+}
+
+export async function browse(browseId) {
+  const client = CLIENTS.WEB_REMIX;
+  return ytPost('browse', client, {
+    context: { client: { ...client.ctx, visitorData: session?.visitorData } },
+    browseId,
+  }, { login: true });
+}
+
+export async function browseSongs(browseId) {
+  const json = await browse(browseId);
+  return { songs: extractSongs(json), raw: json };
+}
+
+// Library landing: returns whatever playlists YouTube exposes for the
+// account (defensive extraction — the structure varies by account).
+export async function libraryPlaylists() {
+  const json = await browse('FEmusic_library_landing');
+  return { playlists: extractPlaylists(json), raw: json };
+}
+
+// "Up next" / radio suggestions for a seed song. A bare `next` call often
+// returns only the seed item plus an automix playlist id (RDAMVM…); the
+// actual suggestions live in that mix, which is browsable as VL<mixId>.
+export async function watchNext(videoId) {
+  const client = CLIENTS.WEB_REMIX;
+  const json = await ytPost('next', client, {
+    context: { client: { ...client.ctx, visitorData: session?.visitorData } },
+    videoId, enablePersistentPlaylistPanel: true, tunerSettingValue: 'AUTOMIX_SETTING_NORMAL', isAudioOnly: true,
+  }, { login: true });
+  let songs = extractSongs(json).filter(s => s.videoId !== videoId);
+  if (songs.length < 2) {
+    // The mix itself must be loaded through `next` with the automix
+    // playlistId — browsing VL<mixId> returns an empty page.
+    const mixId = JSON.stringify(json).match(/RDAMVM[a-zA-Z0-9_-]+/)?.[0];
+    if (mixId) {
+      const mixJson = await ytPost('next', client, {
+        context: { client: { ...client.ctx, visitorData: session?.visitorData } },
+        videoId, playlistId: mixId, enablePersistentPlaylistPanel: true, isAudioOnly: true,
+      }, { login: true });
+      const mixSongs = extractSongs(mixJson).filter(s => s.videoId !== videoId);
+      if (mixSongs.length > songs.length) songs = mixSongs;
+    }
+  }
+  return { songs, raw: json };
 }
 
 export async function player(videoId, client, { poToken = null, login = false } = {}) {
@@ -202,8 +307,8 @@ export async function accountMenu() {
   const body = { context: { client: { ...client.ctx, visitorData: session?.visitorData } } };
   const first = parse(await ytPost('account/account_menu', client, body, { login: true }));
   if (first.name) return { ...first, variant: 'standar' };
-  // Retry without X-Goog-PageId: a bad page-id header can make the backend
-  // treat an otherwise valid session as logged out.
-  const second = parse(await ytPost('account/account_menu', client, body, { login: true, pageId: false }));
-  return { ...second, variant: 'tanpa-pageid', firstLoggedIn: first.loggedIn };
+  // One plain retry: account_menu occasionally answers a transient backend
+  // error (HTTP 500) even for a valid session.
+  const second = parse(await ytPost('account/account_menu', client, body, { login: true }));
+  return { ...second, variant: 'ulang', firstLoggedIn: first.loggedIn };
 }
