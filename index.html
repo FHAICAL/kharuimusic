@@ -3,95 +3,144 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>KharuiMusic — D0 Spike</title>
-<style>
-  :root{color-scheme:dark;--bg:#0f0f12;--card:#1a1a20;--line:#2c2c35;--txt:#f2f2f5;--dim:#a7a7b3;--acc:#ff4e45;--ok:#3ddc84;--warn:#ffb020}
-  *{box-sizing:border-box} body{margin:0;font-family:system-ui,sans-serif;background:var(--bg);color:var(--txt)}
-  header{padding:14px 16px 8px} h1{font-size:20px;margin:0} h1 span{color:var(--acc)}
-  .sub{color:var(--dim);font-size:13px;margin-top:2px}
-  .chips{display:flex;gap:8px;flex-wrap:wrap;padding:8px 16px}
-  .chip{font-size:12px;padding:5px 10px;border:1px solid var(--line);border-radius:999px;background:var(--card)}
-  .chip b{color:var(--ok)} .chip .no{color:var(--warn)}
-  section{padding:10px 16px} h2{font-size:15px;margin:8px 0}
-  .row{display:flex;gap:8px;flex-wrap:wrap}
-  button{background:var(--acc);color:#fff;border:0;border-radius:10px;padding:11px 14px;font-size:14px;font-weight:600}
-  button.ghost{background:var(--card);border:1px solid var(--line);color:var(--txt);font-weight:500}
-  button:disabled{opacity:.45}
-  input,textarea{width:100%;background:var(--card);border:1px solid var(--line);color:var(--txt);border-radius:10px;padding:11px;font-size:14px}
-  textarea{font-size:11px;font-family:monospace}
-  .item{display:flex;gap:10px;align-items:center;padding:8px;border:1px solid var(--line);border-radius:12px;margin:8px 0;background:var(--card);width:100%;text-align:left;color:var(--txt)}
-  .item img{width:52px;height:52px;border-radius:8px;object-fit:cover}
-  .item .t{font-size:14px;font-weight:600} .item .a{font-size:12px;color:var(--dim)}
-  audio{width:100%;margin-top:8px}
-  #nowPlaying{font-size:13px;color:var(--dim)}
-  #log{background:#08080a;border:1px solid var(--line);border-radius:10px;padding:10px;font-size:11px;line-height:1.5;height:300px;overflow:auto;white-space:pre-wrap;word-break:break-word}
-  .gate{font-size:13px;padding:6px 0;border-bottom:1px dashed var(--line)} .gate b{float:right}
-  .ok{color:var(--ok)} .bad{color:var(--acc)} .wait{color:var(--warn)}
-</style>
+<title>KharuiMusic</title>
 </head>
 <body>
-<header>
-  <h1>🎵 Kharui<span>Music</span></h1>
-  <div class="sub">D0 Spike — pembuktian transport, login, dan PoToken (arsitektur hybrid Capacitor)</div>
+<header id="topbar">
+  <div class="logo">🎵 Kharui<span>Music</span></div>
+  <div class="top-actions">
+    <button id="btnLog" class="icon-btn" title="Log diagnostik">🧾</button>
+    <button id="btnAccount" class="account-btn">Masuk</button>
+  </div>
 </header>
-<div class="chips">
-  <div class="chip">Runtime: <b id="chipRuntime">…</b></div>
-  <div class="chip">Sesi: <b id="chipSession" class="no">belum login</b></div>
-  <div class="chip">VisitorData: <b id="chipVisitor" class="no">—</b></div>
-  <div class="chip">PoToken: <b id="chipPot" class="no">—</b></div>
+
+<main>
+  <!-- JELAJAH -->
+  <section id="view-explore" class="view">
+    <form id="searchForm" class="search-row">
+      <input id="q" type="search" placeholder="Cari lagu, artis, album…" autocomplete="off" />
+      <button type="submit">Cari</button>
+    </form>
+    <div id="homeSections">
+      <h2 class="sec-title">Mulai cepat</h2>
+      <div class="chips-row">
+        <button class="qchip" data-q="Dewa 19">Dewa 19</button>
+        <button class="qchip" data-q="Peterpan">Peterpan</button>
+        <button class="qchip" data-q="Sheila On 7">Sheila On 7</button>
+        <button class="qchip" data-q="Coldplay">Coldplay</button>
+        <button class="qchip" data-q="Lo-fi beats">Lo-fi</button>
+      </div>
+      <div id="recentWrap" hidden>
+        <h2 class="sec-title">Terakhir diputar</h2>
+        <div id="recentList"></div>
+      </div>
+      <p class="hint">Cari lagu di atas, lalu ketuk untuk memutar. Hasil pencarian otomatis menjadi antrean.</p>
+    </div>
+    <div id="resultsWrap" hidden>
+      <h2 class="sec-title" id="resultsTitle">Hasil</h2>
+      <div id="results"></div>
+      <button id="btnBackHome" class="ghost full">← Kembali</button>
+    </div>
+  </section>
+
+  <!-- LIBRARY -->
+  <section id="view-library" class="view" hidden>
+    <h2 class="sec-title">Library kamu</h2>
+    <div id="libraryBody">
+      <p class="hint" id="libraryHint">Memuat…</p>
+      <div id="libraryList"></div>
+    </div>
+  </section>
+
+  <!-- PLAYLIST -->
+  <section id="view-playlist" class="view" hidden>
+    <button id="btnBackLibrary" class="ghost">← Library</button>
+    <div class="pl-head">
+      <img id="plThumb" alt="" />
+      <div>
+        <div id="plTitle" class="pl-title"></div>
+        <div id="plSub" class="pl-sub"></div>
+      </div>
+    </div>
+    <button id="btnPlayAll" class="full">▶ Putar Semua</button>
+    <div id="plSongs"></div>
+  </section>
+</main>
+
+<!-- MINI PLAYER -->
+<div id="miniPlayer" hidden>
+  <img id="miniThumb" alt="" />
+  <div class="mini-meta" id="miniMeta">
+    <div id="miniTitle" class="mini-title">—</div>
+    <div id="miniArtist" class="mini-artist">—</div>
+  </div>
+  <button id="btnMiniPrev" class="icon-btn">⏮</button>
+  <button id="btnMiniPlay" class="icon-btn big">▶</button>
+  <button id="btnMiniNext" class="icon-btn">⏭</button>
+  <div id="miniProgress"><div id="miniProgressBar"></div></div>
 </div>
 
-<section>
-  <h2>Gerbang D0</h2>
-  <div class="gate">1 · Transport native (InnerTube langsung, tanpa relay) <b id="gate1" class="wait">menunggu</b></div>
-  <div class="gate">2 · Login Google via WebView (cookie + akun terverifikasi) <b id="gate2" class="wait">menunggu</b></div>
-  <div class="gate">3 · PoToken + putar lagu yang kena bot-check <b id="gate3" class="wait">menunggu</b></div>
-</section>
-
-<section>
-  <h2>1 · Pencarian (uji transport)</h2>
-  <div class="row">
-    <input id="q" value="Dewa 19 Kangen" style="flex:1;min-width:160px" />
-    <button id="btnSearch">Cari</button>
+<!-- NOW PLAYING -->
+<div id="nowPlayingSheet" hidden>
+  <div class="np-top">
+    <button id="btnCloseNp" class="icon-btn">⌄</button>
+    <div class="np-source" id="npSource">KharuiMusic</div>
+    <button id="btnQueueToggle" class="icon-btn" title="Antrean">☰</button>
   </div>
-  <div id="results"></div>
-</section>
-
-<section>
-  <h2>2 · Login</h2>
-  <div class="row">
-    <button id="btnLogin">Masuk dengan Google (WebView)</button>
-    <button id="btnLogout" class="ghost">Keluar / Hapus Sesi</button>
+  <img id="npThumb" alt="" />
+  <div id="npTitle" class="np-title">—</div>
+  <div id="npArtist" class="np-artist">—</div>
+  <input id="npSeek" type="range" min="0" max="1000" value="0" />
+  <div class="np-times"><span id="npCur">0:00</span><span id="npDur">0:00</span></div>
+  <div class="np-controls">
+    <button id="btnShuffle" class="icon-btn toggle">🔀</button>
+    <button id="btnPrev" class="icon-btn big">⏮</button>
+    <button id="btnPlay" class="icon-btn huge">▶</button>
+    <button id="btnNext" class="icon-btn big">⏭</button>
+    <button id="btnRepeat" class="icon-btn toggle">🔁</button>
   </div>
-  <div id="accountInfo" style="font-size:13px;color:var(--dim);margin-top:8px"></div>
-  <details style="margin-top:10px">
-    <summary style="font-size:13px;color:var(--dim)">Cadangan: tempel cookie manual</summary>
-    <textarea id="cookiePaste" rows="3" placeholder="Cookie: dari music.youtube.com (satu baris, format nama=nilai; nama=nilai; ...)"></textarea>
-    <div class="row" style="margin-top:6px"><button id="btnPasteCookie" class="ghost">Simpan Cookie</button></div>
-  </details>
-</section>
-
-<section>
-  <h2>3 · Lagu uji bot-check</h2>
-  <input id="testVideoId" value="kJQP7kiw5Fk" />
-  <div style="font-size:12px;color:var(--dim);margin:6px 0">Default <code>kJQP7kiw5Fk</code> (Despacito) — dari IP datacenter kemarin: <code>LOGIN_REQUIRED “Sign in to confirm you’re not a bot”</code>. Di HP-mu seharusnya bisa diputar, apalagi dengan PoToken.</div>
-  <div class="row">
-    <button id="btnPlayTest">▶ Putar Lagu Uji (rantai penuh)</button>
-    <button id="btnMint" class="ghost">Tes Mint PoToken Saja</button>
+  <div id="npStatus" class="np-status"></div>
+  <div id="queueWrap" hidden>
+    <h3>Antrean</h3>
+    <div id="queueList"></div>
   </div>
-  <div id="nowPlaying"></div>
-  <audio id="player" controls preload="none"></audio>
-</section>
+</div>
 
-<section>
-  <h2>Log diagnostik</h2>
-  <div class="row" style="margin-bottom:8px">
-    <button id="btnCopyLog" class="ghost">📋 Salin Log</button>
-    <button id="btnClearLog" class="ghost">Bersihkan</button>
+<!-- LOG DRAWER -->
+<div id="logDrawer" hidden>
+  <div class="log-head">
+    <b>Log diagnostik</b>
+    <div>
+      <button id="btnCopyLog" class="ghost">📋 Salin</button>
+      <button id="btnClearLog" class="ghost">Bersihkan</button>
+      <button id="btnCloseLog" class="ghost">Tutup</button>
+    </div>
   </div>
   <div id="log"></div>
-</section>
+</div>
 
+<!-- ACCOUNT SHEET -->
+<div id="accountSheet" hidden>
+  <h3>Akun</h3>
+  <div id="accountInfo" class="hint">Belum masuk.</div>
+  <div class="col-gap">
+    <button id="btnLogin" class="full">Masuk dengan Google</button>
+    <button id="btnLogout" class="ghost full">Keluar / Hapus Sesi</button>
+    <button id="btnCloseAccount" class="ghost full">Tutup</button>
+  </div>
+  <details>
+    <summary class="hint">Cadangan: tempel cookie manual</summary>
+    <textarea id="cookiePaste" rows="3" placeholder="Cookie dari music.youtube.com (nama=nilai; nama=nilai; ...)"></textarea>
+    <button id="btnPasteCookie" class="ghost full">Simpan Cookie</button>
+  </details>
+</div>
+
+<nav id="bottomNav">
+  <button id="navExplore" class="nav-btn active">🏠<span>Jelajah</span></button>
+  <button id="navLibrary" class="nav-btn">📚<span>Library</span></button>
+</nav>
+
+<audio id="player" preload="auto"></audio>
 <script type="module" src="/src/main.js"></script>
 </body>
 </html>
