@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.gradle/
+android/app/build/
+android/build/
+android/.gradle/
+android/local.properties
+apk-build.log
+*.apk
+.DS_Store
+
+# Capacitor generated (CI runs cap sync itself)
+android/app/src/main/assets/
