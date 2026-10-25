@@ -154,6 +154,29 @@ export function pickAudioFormat(playerJson) {
   return { all: aud, best: direct || aud[0] || null, ciphered: aud.length > 0 && !direct };
 }
 
+// Fetch the music.youtube.com homepage HTML (with the session cookie when
+// logged in) and pull ytcfg values out of it. The initial page HTML embeds
+// ytcfg.set({...}) with VISITOR_DATA and, for a logged-in session,
+// DATASYNC_ID — this does not depend on WebView page-load timing, unlike
+// reading window.ytcfg from inside the login WebView.
+export async function fetchYtcfgFromHtml() {
+  const headers = { 'User-Agent': CLIENTS.WEB_REMIX.ua, 'Accept-Language': 'en' };
+  if (session?.cookie) headers['Cookie'] = session.cookie;
+  const res = await fetch('https://music.youtube.com/', { headers });
+  const html = await res.text();
+  const grab = keys => {
+    for (const k of keys) {
+      const m = html.match(new RegExp('"' + k + '"\\s*:\\s*"([^"]+)"'));
+      if (m) return m[1];
+    }
+    return null;
+  };
+  return {
+    visitorData: grab(['VISITOR_DATA', 'visitorData']),
+    dataSyncId: grab(['DATASYNC_ID', 'dataSyncId']),
+  };
+}
+
 export async function accountMenu() {
   const client = CLIENTS.WEB_REMIX;
   const json = await ytPost('account/account_menu', client, {
