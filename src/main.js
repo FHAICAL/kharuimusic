@@ -79,7 +79,7 @@ $('btnSearch').onclick = async () => {
       b.innerHTML = `${s.thumb ? `<img src="${s.thumb}">` : ''}<div><div class="t"></div><div class="a"></div></div>`;
       b.querySelector('.t').textContent = s.title;
       b.querySelector('.a').textContent = s.byline || s.videoId;
-      b.onclick = () => playChain(s.videoId, s.title);
+      b.onclick = () => requestPlay(s.videoId, s.title);
       box.appendChild(b);
     }
   } catch (e) {
@@ -91,8 +91,10 @@ $('btnSearch').onclick = async () => {
 // ---------- Gate 2: login ----------
 const LOGIN_URL = 'https://accounts.google.com/ServiceLogin?continue=https%3A%2F%2Fmusic.youtube.com';
 let loginPoll = null;
+let loginOpen = false; // abaikan event WebView setelah jendela login ditutup
 
 async function tryCompleteLogin(source) {
+  if (!loginOpen) return false;
   try {
     const merged = {};
     for (const url of ['https://music.youtube.com', 'https://www.youtube.com', 'https://youtube.com']) {
@@ -107,7 +109,7 @@ async function tryCompleteLogin(source) {
     window.__pendingCookie = cookieStr;
     return true;
   } catch (e) {
-    log(`tryCompleteLogin error: ${e.message}`);
+    if (loginOpen) log(`tryCompleteLogin error: ${e.message}`);
     return false;
   }
 }
@@ -117,6 +119,7 @@ async function finishLogin(extra) {
   const cookie = window.__pendingCookie;
   if (!cookie || loginFinishing) return;
   loginFinishing = true;
+  loginOpen = false;
   window.__pendingCookie = null;
   if (loginPoll) { clearInterval(loginPoll); loginPoll = null; }
   let visitorData = extra?.visitorData || YT.getSession()?.visitorData || null;
@@ -140,10 +143,10 @@ async function finishLogin(extra) {
     const info = await YT.accountMenu();
     if (info.name) {
       saveSession({ ...YT.getSession(), accountName: info.name, accountEmail: info.email, accountHandle: info.handle });
-      log(`Verifikasi akun OK: ${info.name} ${info.email || ''}`);
+      log(`Verifikasi akun OK: ${info.name} ${info.email || ''} (varian ${info.variant})`);
       gate(2, true);
     } else {
-      log('account_menu menjawab tapi nama akun tidak ditemukan — cek log mentah. ' + JSON.stringify(info.raw).slice(0, 300));
+      log(`account_menu tanpa nama akun (varian ${info.variant}, logged_in=${info.loggedIn ?? '?'}${info.firstLoggedIn !== undefined ? ', percobaan pertama logged_in=' + info.firstLoggedIn : ''}). Mentah: ` + JSON.stringify(info.raw).slice(0, 300));
       gate(2, false);
     }
   } catch (e) {
@@ -158,6 +161,7 @@ if (isNative) {
     const d = e?.detail || e;
     if (d?.type === 'ytcfg') { log(`ytcfg dari WebView: visitorData=${d.visitorData ? 'ada' : '—'} dataSyncId=${d.dataSyncId ? 'ada' : '—'}`); finishLogin(d); }
   });
+  InAppBrowser.addListener('closeEvent', () => { loginOpen = false; if (loginPoll) { clearInterval(loginPoll); loginPoll = null; } });
   InAppBrowser.addListener('browserPageLoaded', () => { tryCompleteLogin('pageLoaded'); });
   InAppBrowser.addListener('urlChangeEvent', e => { if ((e?.url || '').includes('music.youtube.com')) tryCompleteLogin('urlChange'); });
 }
@@ -165,13 +169,15 @@ if (isNative) {
 $('btnLogin').onclick = async () => {
   if (!isNative) { log('Login WebView hanya tersedia di APK (mode native). Di browser gunakan tempel cookie manual.'); return; }
   log('Membuka WebView login Google… silakan login seperti biasa.');
+  loginOpen = true;
   try {
     await InAppBrowser.openWebView({ url: LOGIN_URL });
     if (loginPoll) clearInterval(loginPoll);
     loginPoll = setInterval(() => tryCompleteLogin('poll'), 3000);
-  } catch (e) { log(`openWebView GAGAL: ${e.message}`); }
+  } catch (e) { loginOpen = false; log(`openWebView GAGAL: ${e.message}`); }
 };
 $('btnLogout').onclick = async () => {
+  loginOpen = false;
   saveSession(null);
   if (isNative) { try { await InAppBrowser.clearAllCookies(); } catch {} }
   log('Sesi dihapus.');
@@ -185,6 +191,14 @@ $('btnPasteCookie').onclick = async () => {
 };
 
 // ---------- Gate 3: PoToken + playback chain ----------
+// Ketukan berulang untuk lagu yang sama saat masih dimuat = diabaikan;
+// ketukan lagu lain membatalkan permintaan sebelumnya (lihat playSeq).
+const inFlightPlays = new Set();
+function requestPlay(videoId, title = '') {
+  if (inFlightPlays.has(videoId)) { log(`Putar ${videoId} sudah sedang diproses — ketukan ganda diabaikan.`); return; }
+  inFlightPlays.add(videoId);
+  playChain(videoId, title).finally(() => inFlightPlays.delete(videoId));
+}
 let playSeq = 0; // setiap permintaan putar baru membatalkan yang sebelumnya
 async function playChain(videoId, title = '') {
   const seq = ++playSeq;
@@ -255,14 +269,18 @@ function startAudio({ url, itag, mime }, via, seq) {
   audio.onerror = () => { if (seq === playSeq) { log(`Audio error: ${audio.error?.message || audio.error?.code}`); gate(3, false); } };
 }
 
-$('btnPlayTest').onclick = () => playChain($('testVideoId').value.trim(), 'lagu uji');
+$('btnPlayTest').onclick = () => requestPlay($('testVideoId').value.trim(), 'lagu uji');
+let minting = false;
 $('btnMint').onclick = async () => {
+  if (minting) { log('Mint PoToken sedang berjalan — ketukan ganda diabaikan.'); return; }
+  minting = true;
   try {
     const visitor = await ensureVisitorData();
     const t = await mintPoToken(visitor, log);
     $('chipPot').textContent = 'mint ✓ ' + t.slice(0, 10) + '…';
     log('Tes mint PoToken: LOLOS');
   } catch (e) { log(`Tes mint PoToken GAGAL: ${e.message}`); }
+  finally { minting = false; }
 };
 
 // ---------- log tools ----------
