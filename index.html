@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>KharuiMusic — D0 Spike</title>
+<style>
+  :root{color-scheme:dark;--bg:#0f0f12;--card:#1a1a20;--line:#2c2c35;--txt:#f2f2f5;--dim:#a7a7b3;--acc:#ff4e45;--ok:#3ddc84;--warn:#ffb020}
+  *{box-sizing:border-box} body{margin:0;font-family:system-ui,sans-serif;background:var(--bg);color:var(--txt)}
+  header{padding:14px 16px 8px} h1{font-size:20px;margin:0} h1 span{color:var(--acc)}
+  .sub{color:var(--dim);font-size:13px;margin-top:2px}
+  .chips{display:flex;gap:8px;flex-wrap:wrap;padding:8px 16px}
+  .chip{font-size:12px;padding:5px 10px;border:1px solid var(--line);border-radius:999px;background:var(--card)}
+  .chip b{color:var(--ok)} .chip .no{color:var(--warn)}
+  section{padding:10px 16px} h2{font-size:15px;margin:8px 0}
+  .row{display:flex;gap:8px;flex-wrap:wrap}
+  button{background:var(--acc);color:#fff;border:0;border-radius:10px;padding:11px 14px;font-size:14px;font-weight:600}
+  button.ghost{background:var(--card);border:1px solid var(--line);color:var(--txt);font-weight:500}
+  button:disabled{opacity:.45}
+  input,textarea{width:100%;background:var(--card);border:1px solid var(--line);color:var(--txt);border-radius:10px;padding:11px;font-size:14px}
+  textarea{font-size:11px;font-family:monospace}
+  .item{display:flex;gap:10px;align-items:center;padding:8px;border:1px solid var(--line);border-radius:12px;margin:8px 0;background:var(--card);width:100%;text-align:left;color:var(--txt)}
+  .item img{width:52px;height:52px;border-radius:8px;object-fit:cover}
+  .item .t{font-size:14px;font-weight:600} .item .a{font-size:12px;color:var(--dim)}
+  audio{width:100%;margin-top:8px}
+  #nowPlaying{font-size:13px;color:var(--dim)}
+  #log{background:#08080a;border:1px solid var(--line);border-radius:10px;padding:10px;font-size:11px;line-height:1.5;height:300px;overflow:auto;white-space:pre-wrap;word-break:break-word}
+  .gate{font-size:13px;padding:6px 0;border-bottom:1px dashed var(--line)} .gate b{float:right}
+  .ok{color:var(--ok)} .bad{color:var(--acc)} .wait{color:var(--warn)}
+</style>
+</head>
+<body>
+<header>
+  <h1>🎵 Kharui<span>Music</span></h1>
+  <div class="sub">D0 Spike — pembuktian transport, login, dan PoToken (arsitektur hybrid Capacitor)</div>
+</header>
+<div class="chips">
+  <div class="chip">Runtime: <b id="chipRuntime">…</b></div>
+  <div class="chip">Sesi: <b id="chipSession" class="no">belum login</b></div>
+  <div class="chip">VisitorData: <b id="chipVisitor" class="no">—</b></div>
+  <div class="chip">PoToken: <b id="chipPot" class="no">—</b></div>
+</div>
+
+<section>
+  <h2>Gerbang D0</h2>
+  <div class="gate">1 · Transport native (InnerTube langsung, tanpa relay) <b id="gate1" class="wait">menunggu</b></div>
+  <div class="gate">2 · Login Google via WebView (cookie + akun terverifikasi) <b id="gate2" class="wait">menunggu</b></div>
+  <div class="gate">3 · PoToken + putar lagu yang kena bot-check <b id="gate3" class="wait">menunggu</b></div>
+</section>
+
+<section>
+  <h2>1 · Pencarian (uji transport)</h2>
+  <div class="row">
+    <input id="q" value="Dewa 19 Kangen" style="flex:1;min-width:160px" />
+    <button id="btnSearch">Cari</button>
+  </div>
+  <div id="results"></div>
+</section>
+
+<section>
+  <h2>2 · Login</h2>
+  <div class="row">
+    <button id="btnLogin">Masuk dengan Google (WebView)</button>
+    <button id="btnLogout" class="ghost">Keluar / Hapus Sesi</button>
+  </div>
+  <div id="accountInfo" style="font-size:13px;color:var(--dim);margin-top:8px"></div>
+  <details style="margin-top:10px">
+    <summary style="font-size:13px;color:var(--dim)">Cadangan: tempel cookie manual</summary>
+    <textarea id="cookiePaste" rows="3" placeholder="Cookie: dari music.youtube.com (satu baris, format nama=nilai; nama=nilai; ...)"></textarea>
+    <div class="row" style="margin-top:6px"><button id="btnPasteCookie" class="ghost">Simpan Cookie</button></div>
+  </details>
+</section>
+
+<section>
+  <h2>3 · Lagu uji bot-check</h2>
+  <input id="testVideoId" value="kJQP7kiw5Fk" />
+  <div style="font-size:12px;color:var(--dim);margin:6px 0">Default <code>kJQP7kiw5Fk</code> (Despacito) — dari IP datacenter kemarin: <code>LOGIN_REQUIRED “Sign in to confirm you’re not a bot”</code>. Di HP-mu seharusnya bisa diputar, apalagi dengan PoToken.</div>
+  <div class="row">
+    <button id="btnPlayTest">▶ Putar Lagu Uji (rantai penuh)</button>
+    <button id="btnMint" class="ghost">Tes Mint PoToken Saja</button>
+  </div>
+  <div id="nowPlaying"></div>
+  <audio id="player" controls preload="none"></audio>
+</section>
+
+<section>
+  <h2>Log diagnostik</h2>
+  <div class="row" style="margin-bottom:8px">
+    <button id="btnCopyLog" class="ghost">📋 Salin Log</button>
+    <button id="btnClearLog" class="ghost">Bersihkan</button>
+  </div>
+  <div id="log"></div>
+</section>
+
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>
