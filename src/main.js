@@ -39,6 +39,21 @@ function refreshSessionChip() {
 }
 saveSession(loadSession());
 
+// Backfill ytcfg values for sessions saved before the HTML-based extraction
+// existed (visitorData/dataSyncId empty) — no re-login needed.
+(async () => {
+  const s = YT.getSession();
+  if (s?.cookie && (!s.visitorData || !s.dataSyncId)) {
+    try {
+      const h = await YT.fetchYtcfgFromHtml();
+      if (h.visitorData || h.dataSyncId) {
+        saveSession({ ...s, visitorData: s.visitorData || h.visitorData, dataSyncId: s.dataSyncId || h.dataSyncId });
+        log(`ytcfg sesi lama dilengkapi via HTML: visitorData=${h.visitorData ? 'ada' : '—'} dataSyncId=${h.dataSyncId ? 'ada' : '—'}`);
+      }
+    } catch (e) { log(`Backfill ytcfg gagal: ${e.message}`); }
+  }
+})();
+
 async function ensureVisitorData() {
   const s = YT.getSession() || {};
   if (s.visitorData) return s.visitorData;
@@ -97,12 +112,27 @@ async function tryCompleteLogin(source) {
   }
 }
 
+let loginFinishing = false;
 async function finishLogin(extra) {
   const cookie = window.__pendingCookie;
-  if (!cookie) return;
+  if (!cookie || loginFinishing) return;
+  loginFinishing = true;
   window.__pendingCookie = null;
   if (loginPoll) { clearInterval(loginPoll); loginPoll = null; }
-  const s = { cookie, visitorData: extra?.visitorData || YT.getSession()?.visitorData || null, dataSyncId: extra?.dataSyncId || null };
+  let visitorData = extra?.visitorData || YT.getSession()?.visitorData || null;
+  let dataSyncId = extra?.dataSyncId || null;
+  if (!visitorData || !dataSyncId) {
+    // The WebView ytcfg read races page load and often comes back empty;
+    // pull the values from the homepage HTML with the session cookie instead.
+    try {
+      YT.setSession({ ...(YT.getSession() || {}), cookie });
+      const h = await YT.fetchYtcfgFromHtml();
+      visitorData = visitorData || h.visitorData;
+      dataSyncId = dataSyncId || h.dataSyncId;
+      log(`ytcfg via HTML: visitorData=${visitorData ? 'ada' : '—'} dataSyncId=${dataSyncId ? 'ada' : '—'}`);
+    } catch (e) { log(`Ambil ytcfg via HTML gagal: ${e.message}`); }
+  }
+  const s = { cookie, visitorData, dataSyncId };
   saveSession(s);
   log(`Sesi tersimpan. visitorData=${s.visitorData ? 'ada' : '—'} dataSyncId=${s.dataSyncId ? 'ada' : '—'}`);
   try { await InAppBrowser.close(); } catch {}
@@ -120,6 +150,7 @@ async function finishLogin(extra) {
     log(`Verifikasi account_menu GAGAL: ${e.message} ${e.body || ''}`);
     gate(2, false);
   }
+  loginFinishing = false;
 }
 
 if (isNative) {
@@ -154,7 +185,10 @@ $('btnPasteCookie').onclick = async () => {
 };
 
 // ---------- Gate 3: PoToken + playback chain ----------
+let playSeq = 0; // setiap permintaan putar baru membatalkan yang sebelumnya
 async function playChain(videoId, title = '') {
+  const seq = ++playSeq;
+  const stale = () => seq !== playSeq;
   log(`— Putar ${videoId} ${title}`);
   $('nowPlaying').textContent = `Memuat ${title || videoId}…`;
   const audio = $('player');
@@ -173,11 +207,13 @@ async function playChain(videoId, title = '') {
 
   // 1) anonymous fallback chain (ArchiveTune order, WEB_REMIX tried with login if session exists)
   for (const key of YT.FALLBACK_ORDER) {
+    if (stale()) { log('  (permintaan putar digantikan yang lebih baru — berhenti)'); return; }
     try {
       const r = await attempt(key, { login: !!YT.getSession()?.cookie });
-      if (r) return startAudio(r, key);
+      if (r) { if (!stale()) startAudio(r, key, seq); return; }
     } catch (e) { log(`  [${key}] error: ${e.message}`); lastErr = e; }
   }
+  if (stale()) return;
 
   // 2) PoToken path: session token -> WEB_REMIX player
   try {
@@ -194,22 +230,29 @@ async function playChain(videoId, title = '') {
         r.url += (r.url.includes('?') ? '&' : '?') + 'pot=' + encodeURIComponent(gvs);
         log('  GVS PoToken ditempel ke URL stream.');
       } catch (e) { log(`  GVS mint gagal (lanjut tanpa): ${e.message}`); }
-      return startAudio(r, 'WEB_REMIX+PoToken');
+      if (!stale()) startAudio(r, 'WEB_REMIX+PoToken', seq);
+      return;
     }
   } catch (e) { log(`PoToken path GAGAL: ${e.message}`); lastErr = e; }
+  if (stale()) return;
 
   $('nowPlaying').textContent = 'Gagal memutar: ' + (lastErr?.message || 'tidak diketahui');
   gate(3, false);
 }
 
-function startAudio({ url, itag, mime }, via) {
+function startAudio({ url, itag, mime }, via, seq) {
+  if (seq !== undefined && seq !== playSeq) return; // sudah digantikan
   const audio = $('player');
+  try { audio.pause(); } catch {}
   audio.src = url;
   $('nowPlaying').textContent = `Diputar via ${via} · itag ${itag} · ${mime}`;
   log(`Stream dipilih (via ${via}, itag ${itag}). Menekan play…`);
-  audio.play().then(() => { log('Audio PLAYING ✓'); gate(3, true); })
-    .catch(e => { log(`audio.play() ditolak: ${e.message} — sentuh tombol play pada pemutar.`); });
-  audio.onerror = () => { log(`Audio error: ${audio.error?.message || audio.error?.code}`); gate(3, false); };
+  audio.play().then(() => { if (seq === playSeq) { log('Audio PLAYING ✓'); gate(3, true); } })
+    .catch(e => {
+      if (e?.name === 'AbortError') { log('play() terputus permintaan putar yang lebih baru — wajar, abaikan.'); return; }
+      log(`audio.play() ditolak: ${e.message} — sentuh tombol play pada pemutar.`);
+    });
+  audio.onerror = () => { if (seq === playSeq) { log(`Audio error: ${audio.error?.message || audio.error?.code}`); gate(3, false); } };
 }
 
 $('btnPlayTest').onclick = () => playChain($('testVideoId').value.trim(), 'lagu uji');
