@@ -72,8 +72,14 @@ async function ensureVisitorData() {
   return visitorData;
 }
 
-// ---------- stream resolution (proven chain) ----------
-async function resolveStream(videoId) {
+// ---------- stream resolution (proven chain, ArchiveTune-style caching) ----------
+// ArchiveTune caches stream URLs and remembers which client worked; do the
+// same so song changes are fast and dead URLs are re-resolved, not replayed.
+const streamCache = new Map(); // videoId -> { url, exp }
+let lastGoodClient = null;
+async function resolveStream(videoId, { force = false } = {}) {
+  const cached = streamCache.get(videoId);
+  if (!force && cached && cached.exp > Date.now() + 60000) return { url: cached.url, via: 'cache' };
   let lastErr = null;
   async function attempt(clientKey, { poToken = null, login = false } = {}) {
     const client = YT.CLIENTS[clientKey];
@@ -83,9 +89,14 @@ async function resolveStream(videoId) {
     const { best, all } = YT.pickAudioFormat(json);
     log(`  [${clientKey}] status=${status} ${reason} fmts=${all.length}${best?.url ? ' URL ada' : ''}`);
     if (status !== 'OK' || !best?.url) { lastErr = new Error(`${clientKey}: ${status} ${reason}`); return null; }
+    lastGoodClient = clientKey;
+    let exp = Date.now() + 5 * 3600 * 1000;
+    try { const e = new URL(best.url).searchParams.get('expire'); if (e) exp = Number(e) * 1000; } catch {}
+    streamCache.set(videoId, { url: best.url, exp });
     return { url: best.url, via: clientKey };
   }
-  for (const key of YT.FALLBACK_ORDER) {
+  const order = lastGoodClient ? [lastGoodClient, ...YT.FALLBACK_ORDER.filter(k => k !== lastGoodClient)] : YT.FALLBACK_ORDER;
+  for (const key of order) {
     try {
       const r = await attempt(key, { login: !!YT.getSession()?.cookie });
       if (r) return r;
@@ -114,7 +125,7 @@ function getRecent() { try { return JSON.parse(localStorage.getItem(RECENT_KEY))
 function pushRecent(song) {
   const list = getRecent().filter(s => s.videoId !== song.videoId);
   list.unshift({ videoId: song.videoId, title: song.title, byline: song.byline, thumb: song.thumb, duration: song.duration });
-  localStorage.setItem(RECENT_KEY, JSON.stringify(list.slice(0, 12)));
+  localStorage.setItem(RECENT_KEY, JSON.stringify(list.slice(0, 50)));
   renderRecent();
 }
 let lastCurrentId = null;
@@ -126,6 +137,8 @@ const player = new Player($('player'), {
     renderPlayerState(st);
     if (st.current && st.current.videoId !== lastCurrentId) {
       lastCurrentId = st.current.videoId;
+      lyricsLoadedFor = null; relatedLoadedFor = null;
+      if (!$('nowPlayingSheet').hidden && npTab !== 'queue') switchNpTab(npTab);
       pushRecent(st.current);
       highlightPlaying();
     }
@@ -183,13 +196,38 @@ function songRow(song, { onTap, playing = false } = {}) {
   const b = document.createElement('button');
   b.className = 'song' + (playing ? ' playing' : '');
   b.dataset.vid = song.videoId;
-  b.innerHTML = `${song.thumb ? `<img loading="lazy" src="${song.thumb}">` : '<img>'}<div class="meta"><div class="t"></div><div class="a"></div></div><span class="eq"><i></i><i></i><i></i></span>${song.duration ? '<span class="dur"></span>' : ''}`;
+  b.innerHTML = `${song.thumb ? `<img loading="lazy" src="${song.thumb}">` : '<img>'}<div class="meta"><div class="t"></div><div class="a"></div></div><span class="eq"><i></i><i></i><i></i></span>${song.duration ? '<span class="dur"></span>' : ''}<span class="menu-btn" title="Menu lagu">⋮</span>`;
   b.querySelector('.t').textContent = song.title || song.videoId;
   b.querySelector('.a').textContent = song.byline || song.videoId;
   const d = b.querySelector('.dur'); if (d) d.textContent = song.duration;
+  b.querySelector('.menu-btn').onclick = e => { e.stopPropagation(); openSongMenu(song); };
   b.onclick = onTap;
   return b;
 }
+
+// ---------- song menu (ArchiveTune-style ⋮ sheet) ----------
+let menuSong = null;
+function openSongMenu(song) {
+  menuSong = song;
+  $('menuThumb').src = song.thumb || hqThumb(song);
+  $('menuTitle').textContent = song.title || song.videoId;
+  $('menuSub').textContent = song.byline || '';
+  $('songMenu').hidden = false;
+  $('menuBackdrop').hidden = false;
+}
+function closeSongMenu() { $('songMenu').hidden = true; $('menuBackdrop').hidden = true; }
+$('menuBackdrop').onclick = closeSongMenu;
+$('menuClose').onclick = closeSongMenu;
+$('menuPlayNext').onclick = () => { if (menuSong) player.addToQueue(menuSong, true); closeSongMenu(); };
+$('menuAddQueue').onclick = () => { if (menuSong) player.addToQueue(menuSong, false); closeSongMenu(); };
+$('menuRadio').onclick = async () => {
+  const s = menuSong; closeSongMenu();
+  if (!s) return;
+  try { const { songs } = await YT.watchNext(s.videoId); player.playQueue([s, ...songs], 0, `Radio: ${s.title}`); }
+  catch (e) { log(`Radio gagal: ${e.message}`); }
+};
+$('menuLyrics').onclick = () => { const s = menuSong; closeSongMenu(); if (s) { $('nowPlayingSheet').hidden = false; switchNpTab('lyrics'); loadLyrics(s); } };
+$('menuArtist').onclick = () => { const s = menuSong; closeSongMenu(); if (s) doSearch((s.byline || '').split('•')[0].trim() || s.title); };
 function renderSongList(box, songs, onTapSong) {
   box.innerHTML = '';
   songs.forEach((s, i) => box.appendChild(songRow(s, { playing: s.videoId === lastCurrentId, onTap: () => onTapSong(s, i) })));
@@ -272,27 +310,66 @@ function renderRecent() {
   if (list.length) renderSongList($('recentList'), list.slice(0, 4), (s, i) => player.playQueue(list, i, 'Baru saja diputar'));
 }
 
-// ---------- explore / search ----------
-async function doSearch(q) {
+// ---------- explore / search (ArchiveTune-style filter tabs + pagination) ----------
+let curQuery = '', curFilter = 'songs', curResults = [], curContinuation = null;
+function browseRow(item) {
+  const b = document.createElement('button');
+  b.className = 'plrow';
+  b.innerHTML = `${item.thumb ? `<img loading="lazy" src="${item.thumb}">` : '<img>'}<div><div class="t"></div><div class="a"></div></div>`;
+  b.querySelector('.t').textContent = item.title;
+  b.querySelector('.a').textContent = item.byline || '';
+  b.onclick = () => openPlaylist(item);
+  return b;
+}
+function renderSearchPage(r, append = false) {
+  const box = $('results');
+  if (!append) { box.innerHTML = ''; curResults = []; }
+  if (curFilter === 'albums' || curFilter === 'artists') {
+    for (const it of r.items) box.appendChild(browseRow(it));
+    if (!append && !r.items.length) box.innerHTML = '<p class="hint pad">Tidak ada hasil. Coba kata kunci lain.</p>';
+  } else if (curFilter === 'playlists') {
+    const list = r.playlists.length ? r.playlists : r.items;
+    for (const it of list) box.appendChild(browseRow(it));
+    if (!append && !list.length) box.innerHTML = '<p class="hint pad">Tidak ada hasil. Coba kata kunci lain.</p>';
+  } else {
+    const start = curResults.length;
+    curResults = curResults.concat(r.songs);
+    r.songs.forEach((s, k) => box.appendChild(songRow(s, { playing: s.videoId === lastCurrentId, onTap: () => player.playQueue(curResults, start + k, `Pencarian: ${curQuery}`) })));
+    if (!append && !r.songs.length) box.innerHTML = '<p class="hint pad">Tidak ada hasil. Coba kata kunci lain.</p>';
+  }
+  curContinuation = r.continuation || null;
+  $('btnMoreResults').hidden = !curContinuation;
+}
+async function doSearch(q, filter = 'songs') {
   q = (q || '').trim();
   if (!q) return;
+  curQuery = q; curFilter = filter;
+  document.querySelectorAll('.fchip').forEach(c => c.classList.toggle('on', c.dataset.filter === filter));
   showView('explore');
   $('q').value = q;
   $('resultsTitle').textContent = q;
   $('searchDefault').hidden = true;
   $('resultsWrap').hidden = false;
   $('results').innerHTML = '<p class="hint pad">Mencari…</p>';
+  $('btnMoreResults').hidden = true;
   try {
-    const { songs, visitorData } = await YT.searchSongs(q);
-    if (visitorData && !YT.getSession()?.visitorData) saveSession({ ...(YT.getSession() || {}), visitorData });
-    log(`Cari "${q}": ${songs.length} lagu.`);
-    if (!songs.length) { $('results').innerHTML = '<p class="hint pad">Tidak ada hasil. Coba kata kunci lain.</p>'; return; }
-    renderSongList($('results'), songs, (s, i) => player.playQueue(songs, i, `Pencarian: ${q}`));
+    const r = await YT.search(q, filter);
+    if (r.visitorData && !YT.getSession()?.visitorData) saveSession({ ...(YT.getSession() || {}), visitorData: r.visitorData });
+    log(`Cari "${q}" [${filter}]: ${r.songs.length} lagu, ${r.items.length} item, ${r.playlists.length} playlist.`);
+    renderSearchPage(r);
   } catch (e) {
     $('results').innerHTML = `<p class="hint pad">Pencarian gagal: ${e.message}</p>`;
     log(`Search GAGAL: ${e.message} ${e.body || ''}`);
   }
 }
+document.querySelectorAll('.fchip').forEach(c => c.onclick = () => { if (curQuery) doSearch(curQuery, c.dataset.filter); });
+$('btnMoreResults').onclick = async () => {
+  if (!curContinuation) return;
+  $('btnMoreResults').textContent = 'Memuat…';
+  try { renderSearchPage(await YT.continueEndpoint('search', curContinuation), true); }
+  catch (e) { log(`Muat lagi GAGAL: ${e.message}`); }
+  $('btnMoreResults').textContent = 'Muat lebih banyak';
+};
 $('searchForm').addEventListener('submit', e => { e.preventDefault(); doSearch($('q').value); $('q').blur(); });
 document.querySelectorAll('.qchip, .cat-tile').forEach(c => c.onclick = () => doSearch(c.dataset.q));
 $('btnBackHome').onclick = () => { $('resultsWrap').hidden = true; $('searchDefault').hidden = false; };
@@ -300,6 +377,9 @@ $('btnBackHome').onclick = () => { $('resultsWrap').hidden = true; $('searchDefa
 // ---------- library ----------
 let libraryLoadedFor = null;
 async function loadLibrary() {
+  const hist = getRecent();
+  $('historyWrap').hidden = !hist.length;
+  if (hist.length) renderSongList($('historyList'), hist, (s, i) => player.playQueue(hist, i, 'Riwayat putar'));
   const s = YT.getSession();
   const box = $('libraryList');
   if (!s?.cookie) {
@@ -333,25 +413,51 @@ function playlistRow(p) {
   return b;
 }
 let currentPlaylistSongs = [];
+let plContinuation = null;
 async function openPlaylist(p) {
   showView('playlist');
   $('plTitle').textContent = p.title;
   $('plSub').textContent = 'Memuat…';
   $('plThumb').src = p.thumb || '';
   $('plSongs').innerHTML = '';
+  $('btnMorePlaylist').hidden = true;
   currentPlaylistSongs = [];
+  plContinuation = null;
   try {
-    const { songs } = await YT.browseSongs(p.browseId);
+    const { songs, items, continuation } = await YT.browseSongs(p.browseId);
     currentPlaylistSongs = songs;
+    if (!songs.length && items?.length) {
+      $('plSub').textContent = p.byline || '';
+      for (const it of items) $('plSongs').appendChild(browseRow(it));
+      log(`Halaman "${p.title}": ${items.length} album/playlist (bukan daftar lagu langsung).`);
+      return;
+    }
+    plContinuation = continuation || null;
+    $('btnMorePlaylist').hidden = !plContinuation;
     $('plSub').textContent = `${songs.length} lagu • ${p.byline || ''}`;
     if (songs[0] && !p.thumb) $('plThumb').src = hqThumb(songs[0]);
     log(`Playlist "${p.title}" (${p.browseId}): ${songs.length} lagu.`);
-    renderSongList($('plSongs'), songs, (s, i) => player.playQueue(songs, i, p.title));
+    renderSongList($('plSongs'), songs, (s, i) => player.playQueue(currentPlaylistSongs, i, p.title));
   } catch (e) {
-    $('plSub').textContent = 'Gagal memuat playlist.';
-    log(`Browse playlist GAGAL: ${e.message} ${e.body || ''}`);
+    $('plSub').textContent = 'Gagal memuat.';
+    log(`Browse GAGAL: ${e.message} ${e.body || ''}`);
   }
 }
+$('btnMorePlaylist').onclick = async () => {
+  if (!plContinuation) return;
+  $('btnMorePlaylist').textContent = 'Memuat…';
+  try {
+    const r = await YT.continueEndpoint('browse', plContinuation);
+    if (!r.songs.length) { plContinuation = null; $('btnMorePlaylist').hidden = true; $('btnMorePlaylist').textContent = 'Muat lebih banyak'; return; }
+    const start = currentPlaylistSongs.length;
+    currentPlaylistSongs = currentPlaylistSongs.concat(r.songs);
+    plContinuation = r.continuation || null;
+    $('btnMorePlaylist').hidden = !plContinuation;
+    $('plSub').textContent = `${currentPlaylistSongs.length} lagu`;
+    r.songs.forEach((s, k) => $('plSongs').appendChild(songRow(s, { playing: s.videoId === lastCurrentId, onTap: () => player.playQueue(currentPlaylistSongs, start + k, $('plTitle').textContent) })));
+  } catch (e) { log(`Muat lagi playlist GAGAL: ${e.message}`); }
+  $('btnMorePlaylist').textContent = 'Muat lebih banyak';
+};
 $('btnBackLibrary').onclick = () => showView(lastNav === 'playlist' ? 'home' : lastNav);
 $('btnPlayAll').onclick = () => { if (currentPlaylistSongs.length) player.playQueue(currentPlaylistSongs, 0, $('plTitle').textContent); };
 $('btnShufflePlay').onclick = () => {
@@ -373,6 +479,50 @@ $('btnRepeat').onclick = () => player.cycleRepeat();
 $('npSeek').addEventListener('input', e => player.seekToFraction(e.target.value / 1000));
 $('btnMiniPlay').innerHTML = ICON_PLAY_SM;
 $('btnPlay').innerHTML = ICON_PLAY;
+
+// ---------- now-playing tabs: queue / lyrics / related (ArchiveTune-style) ----------
+let npTab = 'queue';
+let lyricsCache = new Map();
+let lyricsLoadedFor = null;
+let relatedLoadedFor = null;
+function switchNpTab(tab) {
+  npTab = tab;
+  document.querySelectorAll('.np-tab').forEach(t => t.classList.toggle('on', t.dataset.tab === tab));
+  $('queueWrap').hidden = tab !== 'queue';
+  $('lyricsWrap').hidden = tab !== 'lyrics';
+  $('relatedWrap').hidden = tab !== 'related';
+  const cur = player.current();
+  if (!cur) return;
+  if (tab === 'lyrics' && lyricsLoadedFor !== cur.videoId) loadLyrics(cur);
+  if (tab === 'related' && relatedLoadedFor !== cur.videoId) loadRelated(cur);
+}
+document.querySelectorAll('.np-tab').forEach(t => t.onclick = () => switchNpTab(t.dataset.tab));
+function parseDur(s) { const p = String(s || '').split(':').map(Number); return p.length === 2 ? p[0] * 60 + p[1] : (p.length === 3 ? p[0] * 3600 + p[1] * 60 + p[2] : 0); }
+async function loadLyrics(song) {
+  lyricsLoadedFor = song.videoId;
+  if (lyricsCache.has(song.videoId)) { $('lyricsBody').textContent = lyricsCache.get(song.videoId); return; }
+  $('lyricsBody').textContent = 'Memuat lirik…';
+  const artist = (song.byline || '').split('•')[0].trim();
+  try {
+    const u = `https://lrclib.net/api/search?track_name=${encodeURIComponent(song.title)}&artist_name=${encodeURIComponent(artist)}`;
+    const arr = await (await fetch(u)).json();
+    const dur = parseDur(song.duration);
+    const best = (arr || []).filter(x => x.plainLyrics).sort((a, b) => Math.abs((a.duration || 0) - dur) - Math.abs((b.duration || 0) - dur))[0];
+    const text = best ? (best.syncedLyrics ? best.syncedLyrics.replace(/^\[\d+:\d+\.\d+\]\s?/gm, '') : best.plainLyrics) : 'Lirik tidak ditemukan untuk lagu ini.';
+    lyricsCache.set(song.videoId, text);
+    if (player.current()?.videoId === song.videoId) $('lyricsBody').textContent = text;
+    log(`Lirik ${best ? 'ditemukan (LRCLIB)' : 'tidak ditemukan'}: ${song.title}`);
+  } catch (e) { $('lyricsBody').textContent = 'Gagal memuat lirik.'; log(`Lirik GAGAL: ${e.message}`); }
+}
+async function loadRelated(song) {
+  relatedLoadedFor = song.videoId;
+  $('relatedList').innerHTML = '<p class="hint pad">Memuat…</p>';
+  try {
+    const { songs } = await YT.watchNext(song.videoId);
+    renderSongList($('relatedList'), songs, (s, i) => player.playQueue([song, ...songs], i + 1, `Terkait: ${song.title}`));
+    if (!songs.length) $('relatedList').innerHTML = '<p class="hint pad">Tidak ada lagu terkait.</p>';
+  } catch (e) { $('relatedList').innerHTML = '<p class="hint pad">Gagal memuat lagu terkait.</p>'; log(`Terkait GAGAL: ${e.message}`); }
+}
 
 // ---------- account / login ----------
 function closeAccount() { $('accountSheet').hidden = true; $('backdrop').hidden = true; }
